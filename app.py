@@ -6,8 +6,8 @@ import re
 
 app = Flask(__name__)
 CHECKIN_FILE = "web_checkins.csv"
-START_TIME = datetime.time(18, 30)  # 6:30 PM
-END_TIME = datetime.time(19, 30)    # 7:30 PM
+START_TIME = datetime.time(18, 30)
+END_TIME = datetime.time(19, 30)
 
 HTML = """
 <!doctype html>
@@ -21,6 +21,21 @@ HTML = """
     .container { max-width: 600px; }
     .card { margin-top: 1rem; }
   </style>
+  <script>
+    function getLocation() {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+          document.getElementById("lat").value = position.coords.latitude.toFixed(6);
+          document.getElementById("lon").value = position.coords.longitude.toFixed(6);
+        }, function(error) {
+          alert("Location access denied or unavailable.");
+        });
+      } else {
+        alert("Geolocation is not supported by this browser.");
+      }
+    }
+    window.onload = getLocation;
+  </script>
 </head>
 <body>
 <div class="container">
@@ -41,16 +56,18 @@ HTML = """
       <label for="id" class="form-label">ID Number (6 digits)</label>
       <input type="text" class="form-control" name="id" id="id" pattern="\\d{6}" maxlength="6" required>
     </div>
+    <input type="hidden" name="lat" id="lat">
+    <input type="hidden" name="lon" id="lon">
     <button type="submit" class="btn btn-primary">Check In</button>
   </form>
 
   <div class="card p-3 mt-4">
     <h5>Check-In Log</h5>
     <table class="table table-striped">
-      <thead><tr><th>Name</th><th>ID</th><th>Time</th></tr></thead>
+      <thead><tr><th>Name</th><th>ID</th><th>Time</th><th>Latitude</th><th>Longitude</th></tr></thead>
       <tbody>
-      {% for name, id, time in checkins %}
-        <tr><td>{{ name }}</td><td>{{ id }}</td><td>{{ time }}</td></tr>
+      {% for name, id, time, lat, lon in checkins %}
+        <tr><td>{{ name }}</td><td>{{ id }}</td><td>{{ time }}</td><td>{{ lat }}</td><td>{{ lon }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -63,11 +80,11 @@ HTML = """
 def is_within_checkin_window(current_time):
     return START_TIME <= current_time.time() <= END_TIME
 
-def log_checkin(name, id_number):
+def log_checkin(name, id_number, lat, lon):
     now = datetime.datetime.now()
     with open(CHECKIN_FILE, mode='a', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow([name, id_number, now.strftime("%Y-%m-%d %H:%M:%S")])
+        writer.writerow([name, id_number, now.strftime("%Y-%m-%d %H:%M:%S"), lat, lon])
 
 def load_checkins():
     if not os.path.exists(CHECKIN_FILE):
@@ -81,6 +98,8 @@ def index():
     if request.method == "POST":
         name = request.form["name"].strip()
         id_number = request.form["id"].strip()
+        lat = request.form.get("lat", "").strip()
+        lon = request.form.get("lon", "").strip()
 
         if not re.fullmatch(r"\d{6}", id_number):
             error = "ID number must be exactly 6 digits."
@@ -89,7 +108,7 @@ def index():
         elif not is_within_checkin_window(datetime.datetime.now()):
             error = "Check-in is only allowed between 6:30 PM and 7:30 PM."
         else:
-            log_checkin(name, id_number)
+            log_checkin(name, id_number, lat or "N/A", lon or "N/A")
             message = f"{name}, you are checked in at {datetime.datetime.now().strftime('%H:%M:%S')}."
 
     checkins = load_checkins()
